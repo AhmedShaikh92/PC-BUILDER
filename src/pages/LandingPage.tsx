@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
 import ScrollTrigger from "gsap/ScrollTrigger";
-import { useScrollProgress } from "../hooks/useScrollProgress";
+import { useScrollProgress } from "../hooks/UseScrollProgress";
 
 // Lazy load the Canvas component
 const CanvasScene = lazy(() =>
