@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ComponentSelector } from "../components/ComponentSelector";
-import { BuildSidebar } from "../components/BuildSidebar";
+import { BuildSidebar } from "../components/BuildSideBar";
 
 const CATEGORIES = [
   "CPU",
