@@ -19,22 +19,28 @@ export interface Component {
   createdAt?: string;
   __v?: number;
 }
+
+// Matches backend Price model: componentId, vendor, price, currency, productUrl, lastUpdated, inStock
 export interface PriceData {
   _id: string;
   componentId: string;
   vendor: string;
   price: number;
+  currency: string;        // always 'INR' from seed
   productUrl: string;
   lastUpdated: string;
+  inStock: boolean;        // seeded as true/false
   __v?: number;
 }
 
 export interface Price {
   componentId: string;
   price: number;
+  currency: string;
   lastUpdated: string;
   vendor?: string;
   productUrl?: string;
+  inStock?: boolean;
 }
 
 export interface RecommendationRequest {
@@ -81,7 +87,6 @@ export const apiService = {
       const response = await api.get<ComponentsResponse>(
         `/components?category=${category}`,
       );
-      console.log("API Response:", response.data);
 
       // Extract components array from response
       if (response.data && Array.isArray(response.data.components)) {
@@ -90,7 +95,7 @@ export const apiService = {
 
       // Fallback: if response.data is already an array (in case API structure changes)
       if (Array.isArray(response.data)) {
-        return response.data;
+        return response.data as unknown as Component[];
       }
 
       console.error("Unexpected API response structure:", response.data);
@@ -101,16 +106,13 @@ export const apiService = {
     }
   },
 
-  // Prices
+  // Prices — returns the lowest IN-STOCK price, falls back to any if all out of stock
   getPrice: async (componentId: string): Promise<Price> => {
     try {
-      console.log(componentId);
-
       const response = await api.get<PriceData[]>(
         `/prices/component/${componentId}`,
       );
 
-      // Check if we got an array of prices
       if (
         !response.data ||
         !Array.isArray(response.data) ||
@@ -119,25 +121,30 @@ export const apiService = {
         throw new Error("No price data available for this component");
       }
 
-      // Find the lowest price from all vendors
-      const lowestPriceData = response.data.reduce((lowest, current) =>
+      // Prefer in-stock entries; fall back to all if none are in stock
+      const inStockPrices = response.data.filter((p) => p.inStock);
+      const pool = inStockPrices.length > 0 ? inStockPrices : response.data;
+
+      const lowestPriceData = pool.reduce((lowest, current) =>
         current.price < lowest.price ? current : lowest,
       );
 
-      // Return formatted price object
       return {
         componentId: lowestPriceData.componentId,
         price: lowestPriceData.price,
+        currency: lowestPriceData.currency,
         lastUpdated: lowestPriceData.lastUpdated,
         vendor: lowestPriceData.vendor,
         productUrl: lowestPriceData.productUrl,
+        inStock: lowestPriceData.inStock,
       };
     } catch (error) {
       console.error("Error fetching price:", error);
       throw error;
     }
   },
-  // Get all prices for a component (all vendors)
+
+  // Get all prices for a component (all vendors), sorted lowest first
   getAllPrices: async (componentId: string): Promise<PriceData[]> => {
     try {
       const response = await api.get<PriceData[]>(
@@ -148,13 +155,17 @@ export const apiService = {
         throw new Error("Invalid price data received");
       }
 
-      // Sort by price (lowest first)
-      return response.data.sort((a, b) => a.price - b.price);
+      // Sort: in-stock first, then by price ascending
+      return response.data.sort((a, b) => {
+        if (a.inStock !== b.inStock) return a.inStock ? -1 : 1;
+        return a.price - b.price;
+      });
     } catch (error) {
       console.error("Error fetching all prices:", error);
       throw error;
     }
   },
+
   getBuildPrice: async (
     componentIds: string[],
   ): Promise<Record<string, number>> => {
@@ -178,11 +189,9 @@ export const apiService = {
     request: RecommendationFormData,
   ): Promise<BuildRecommendation> => {
     try {
-      // Helper function to capitalize first letter only
       const capitalize = (str: string): string =>
         str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 
-      // Transform frontend format to backend format
       const backendRequest: RecommendationRequest = {
         budget: request.budget,
         useCase: capitalize(request.useCase) as
@@ -196,9 +205,6 @@ export const apiService = {
         includeGPU: true,
       };
 
-      console.log("Sending recommendation request:", backendRequest);
-
-      // Validate request
       if (!backendRequest.budget || backendRequest.budget <= 0) {
         throw new Error("Budget must be a positive number");
       }
@@ -217,7 +223,6 @@ export const apiService = {
         "/recommend/build",
         backendRequest,
       );
-      console.log("Recommendation response:", response);
 
       if (!response.data || !Array.isArray(response.data.components)) {
         throw new Error("Invalid recommendation data received");
@@ -263,20 +268,17 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response) {
-      // Server responded with error status
       console.error("API Error Details:", {
         status: error.response.status,
         statusText: error.response.statusText,
         data: error.response.data,
         url: error.config?.url,
         method: error.config?.method,
-        requestData: error.config?.data, // Log what was sent
+        requestData: error.config?.data,
       });
     } else if (error.request) {
-      // Request made but no response
       console.error("Network Error: No response received", error.request);
     } else {
-      // Error in request setup
       console.error("Request Error:", error.message);
     }
     return Promise.reject(error);

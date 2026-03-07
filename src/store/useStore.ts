@@ -14,6 +14,10 @@ export interface SelectedComponent {
   componentId: string
   component: Component
   selectedPrice: number
+  currency: string       // always 'INR' from backend
+  productUrl?: string
+  vendor?: string        // which vendor this price came from
+  inStock?: boolean      // stock status from backend
 }
 
 export interface SavedBuild {
@@ -29,7 +33,15 @@ export interface BuildState {
   selectedComponents: Record<string, SelectedComponent>
   totalPrice: number
   savedBuilds: SavedBuild[]
-  setComponent: (category: string, component: Component, price: number) => void
+  setComponent: (
+    category: string,
+    component: Component,
+    price: number,
+    productUrl?: string,
+    vendor?: string,
+    inStock?: boolean,
+    currency?: string,
+  ) => void
   removeComponent: (category: string) => void
   clearBuild: () => void
   calculateTotal: (prices: Record<string, number>) => void
@@ -45,52 +57,69 @@ export const useBuildStore = create<BuildState>()(
       selectedComponents: {},
       totalPrice: 0,
       savedBuilds: [],
-      
-      setComponent: (category, component, price) => {
+
+      setComponent: (
+        category,
+        component,
+        price,
+        productUrl,
+        vendor,
+        inStock = true,
+        currency = 'INR',
+      ) => {
         set((state) => {
           const newComponents = {
             ...state.selectedComponents,
-            [category]: { componentId: component._id, component, selectedPrice: price },
+            [category]: {
+              componentId: component._id,
+              component,
+              selectedPrice: price,
+              currency,
+              productUrl,
+              vendor,
+              inStock,
+            },
           };
-          
+
           const newTotal = Object.values(newComponents).reduce(
             (sum, comp) => sum + comp.selectedPrice,
-            0
+            0,
           );
-          
-          return { 
+
+          return {
             selectedComponents: newComponents,
-            totalPrice: newTotal 
+            totalPrice: newTotal,
           };
         });
       },
-      
+
       removeComponent: (category) => {
         set((state) => {
           const newComponents = { ...state.selectedComponents };
           delete newComponents[category];
-          
+
           const newTotal = Object.values(newComponents).reduce(
             (sum, comp) => sum + comp.selectedPrice,
-            0
+            0,
           );
-          
-          return { 
+
+          return {
             selectedComponents: newComponents,
-            totalPrice: newTotal 
+            totalPrice: newTotal,
           };
         });
       },
-      
+
       clearBuild: () => {
         set({ selectedComponents: {}, totalPrice: 0 });
       },
-      
+
       calculateTotal: (prices) => {
         set((state) => {
-          const total = Object.values(state.selectedComponents).reduce((sum, comp) => {
-            return sum + (prices[comp.componentId] || comp.selectedPrice);
-          }, 0);
+          const total = Object.values(state.selectedComponents).reduce(
+            (sum, comp) => sum + (prices[comp.componentId] ?? comp.selectedPrice),
+            0,
+          );
           return { totalPrice: total };
         });
       },
@@ -116,8 +145,8 @@ export const useBuildStore = create<BuildState>()(
 
       loadBuild: (buildId: string) => {
         const state = get();
-        const build = state.savedBuilds.find(b => b.id === buildId);
-        
+        const build = state.savedBuilds.find((b) => b.id === buildId);
+
         if (build) {
           set({
             selectedComponents: build.components,
@@ -128,30 +157,33 @@ export const useBuildStore = create<BuildState>()(
 
       deleteSavedBuild: (buildId: string) => {
         set((state) => ({
-          savedBuilds: state.savedBuilds.filter(b => b.id !== buildId),
+          savedBuilds: state.savedBuilds.filter((b) => b.id !== buildId),
         }));
       },
 
       updateSavedBuild: (buildId: string, name: string) => {
         set((state) => ({
-          savedBuilds: state.savedBuilds.map(b => 
-            b.id === buildId 
+          savedBuilds: state.savedBuilds.map((b) =>
+            b.id === buildId
               ? { ...b, name, updatedAt: new Date().toISOString() }
-              : b
+              : b,
           ),
         }));
       },
     }),
     {
-      name: 'pc-builder-storage', // localStorage key
-      partialize: (state) => ({ 
-        savedBuilds: state.savedBuilds 
-      }), // Only persist saved builds, not current build
-    }
-  )
+      name: 'pc-builder-storage',
+      partialize: (state) => ({
+        savedBuilds: state.savedBuilds,
+      }),
+    },
+  ),
 );
 
-export const useScrollStore = create<{ scrollProgress: number; setScrollProgress: (value: number) => void }>((set) => ({
+export const useScrollStore = create<{
+  scrollProgress: number;
+  setScrollProgress: (value: number) => void;
+}>((set) => ({
   scrollProgress: 0,
   setScrollProgress: (value) => set({ scrollProgress: value }),
 }));
