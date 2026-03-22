@@ -79,6 +79,8 @@ export default function RecommendationPage() {
             `${errorMsg}\n\nTry:\n• Increasing your budget\n• Changing CPU preference to "Any"\n• Selecting a different use case`,
           );
         }
+      } else if (axios.isAxiosError(err) && err.code === 'ECONNABORTED') {
+        setError('Server is taking too long to respond. Please try again in a moment. The backend may be starting up.');
       } else {
         setError("Failed to get recommendation. Please try again.");
       }

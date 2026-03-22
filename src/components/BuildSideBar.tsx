@@ -121,6 +121,7 @@ export function BuildSidebar() {
   // AI state
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [lastAIRequestTime, setLastAIRequestTime] = useState(0); // Debounce protection
 
   const selectedCount = Object.keys(selectedComponents).length;
 
@@ -161,6 +162,13 @@ export function BuildSidebar() {
 
   // On-demand AI — only fires when button is clicked
   const handleOpenAISuggestions = async () => {
+    // Debounce: prevent multiple requests within 2 seconds
+    if (Date.now() - lastAIRequestTime < 2000) {
+      console.log('AI request already in progress, please wait...');
+      return;
+    }
+    setLastAIRequestTime(Date.now());
+
     setShowAIModal(true);
     setAiLoading(true);
     setAiSuggestions([]);
