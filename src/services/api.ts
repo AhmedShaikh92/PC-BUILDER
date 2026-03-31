@@ -4,8 +4,10 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 30000, // Increased from 10s to 30s for slower connections/servers
+  timeout: 30000,
 });
+
+// ─── Existing component/price types (unchanged) ───────────────────────────────
 
 export interface Component {
   _id: string;
@@ -20,16 +22,15 @@ export interface Component {
   __v?: number;
 }
 
-// Matches backend Price model: componentId, vendor, price, currency, productUrl, lastUpdated, inStock
 export interface PriceData {
   _id: string;
   componentId: string;
   vendor: string;
   price: number;
-  currency: string;        // always 'INR' from seed
+  currency: string;
   productUrl: string;
   lastUpdated: string;
-  inStock: boolean;        // seeded as true/false
+  inStock: boolean;
   __v?: number;
 }
 
@@ -43,33 +44,108 @@ export interface Price {
   inStock?: boolean;
 }
 
-export interface RecommendationRequest {
-  budget: number;
-  useCase: "Gaming" | "Productivity" | "Office";
-  preference: "AMD" | "Intel" | "Any";
-  includeGPU?: boolean;
+// ─── New product types ────────────────────────────────────────────────────────
+
+export type ProductType = "Laptop" | "PreBuiltPC";
+export type UseCase =
+  | "Gaming"
+  | "Office"
+  | "Productivity"
+  | "Streaming"
+  | "Content Creation"
+  | "Programming"
+  | "Editing"
+  | "Student"
+  | "Any";
+
+export interface ProductSpecs {
+  cpu?: string;
+  gpu?: string | null;
+  ramGB?: number;
+  storageGB?: number;
+  storageType?: "SSD" | "HDD" | "SSD+HDD";
+  // Laptop-specific
+  displayInches?: number;
+  batteryWh?: number;
+  weightKg?: number;
+  os?: string;
+  // PreBuiltPC-specific
+  formFactor?: string;
+  psuWattage?: number;
 }
+
+export interface Product {
+  _id: string;
+  name: string;
+  type: ProductType;
+  brand: string;
+  useCases: UseCase[];
+  imageUrl: string | null;
+  specs: ProductSpecs;
+  benchmarkScore: number;
+  createdAt?: string;
+}
+
+export interface ProductResult {
+  product: Product;
+  estimatedPrice: number;
+  withinBudget: boolean;
+}
+
+// ─── Request / Response types ─────────────────────────────────────────────────
 
 export interface RecommendationFormData {
   budget: number;
-  useCase: "gaming" | "productivity" | "office";
-  cpuPreference: "amd" | "intel" | "any";
+  useCase: UseCase;
+  brand: string;
+  type: ProductType;
 }
 
-export interface BuildRecommendation {
-  budgetTier: string; // "Entry" | "Mid" | "High"
-  requiredWattage: number;
-  components: Array<{
-    category: string;
-    component: Component;
-  }>;
-  totalEstimatedPrice: number;
-  withinBudget: boolean;
-  compatibilityErrors: string[];
+export interface ProductRecommendationResponse {
+  budgetTier: "Entry" | "Mid" | "High";
+  useCase: UseCase;
+  brand: string;
+  results: {
+    laptop?: ProductResult[];
+    preBuiltPC?: ProductResult[];
+  };
   suggestions?: string[];
 }
 
-// Response types for paginated data
+export interface ProductPriceRequest {
+  productIds: string[];
+}
+
+// A single vendor entry as returned by the /recommend/price endpoint
+export interface VendorPriceEntry {
+  vendor: string;
+  price: number;
+  productUrl?: string;
+  inStock?: boolean;
+}
+
+export interface ProductPriceItem {
+  productId: string;
+  name: string;
+  type: ProductType;
+  brand: string;
+  // Full list of vendor prices for this product
+  prices: VendorPriceEntry[];
+  // Convenience: the single lowest-price vendor (kept for backwards compat)
+  lowest: {
+    vendor: string;
+    price: number;
+    productUrl?: string;
+  };
+}
+
+export interface ProductPriceResponse {
+  products: ProductPriceItem[];
+  totalLowestPrice: number;
+}
+
+// ─── Paginated components response (unchanged) ───────────────────────────────
+
 interface ComponentsResponse {
   components: Component[];
   pagination: {
@@ -80,24 +156,21 @@ interface ComponentsResponse {
   };
 }
 
+// ─── API service ──────────────────────────────────────────────────────────────
+
 export const apiService = {
-  // Components
+  // ── Components (unchanged) ──────────────────────────────────────────────────
   getComponents: async (category: string): Promise<Component[]> => {
     try {
       const response = await api.get<ComponentsResponse>(
         `/components?category=${category}`,
       );
-
-      // Extract components array from response
       if (response.data && Array.isArray(response.data.components)) {
         return response.data.components;
       }
-
-      // Fallback: if response.data is already an array (in case API structure changes)
       if (Array.isArray(response.data)) {
         return response.data as unknown as Component[];
       }
-
       console.error("Unexpected API response structure:", response.data);
       return [];
     } catch (error) {
@@ -106,13 +179,12 @@ export const apiService = {
     }
   },
 
-  // Prices — returns the lowest IN-STOCK price, falls back to any if all out of stock
+  // ── Prices (unchanged) ──────────────────────────────────────────────────────
   getPrice: async (componentId: string): Promise<Price> => {
     try {
       const response = await api.get<PriceData[]>(
         `/prices/component/${componentId}`,
       );
-
       if (
         !response.data ||
         !Array.isArray(response.data) ||
@@ -120,15 +192,11 @@ export const apiService = {
       ) {
         throw new Error("No price data available for this component");
       }
-
-      // Prefer in-stock entries; fall back to all if none are in stock
       const inStockPrices = response.data.filter((p) => p.inStock);
       const pool = inStockPrices.length > 0 ? inStockPrices : response.data;
-
       const lowestPriceData = pool.reduce((lowest, current) =>
         current.price < lowest.price ? current : lowest,
       );
-
       return {
         componentId: lowestPriceData.componentId,
         price: lowestPriceData.price,
@@ -144,18 +212,14 @@ export const apiService = {
     }
   },
 
-  // Get all prices for a component (all vendors), sorted lowest first
   getAllPrices: async (componentId: string): Promise<PriceData[]> => {
     try {
       const response = await api.get<PriceData[]>(
         `/prices/component/${componentId}`,
       );
-
       if (!response.data || !Array.isArray(response.data)) {
         throw new Error("Invalid price data received");
       }
-
-      // Sort: in-stock first, then by price ascending
       return response.data.sort((a, b) => {
         if (a.inStock !== b.inStock) return a.inStock ? -1 : 1;
         return a.price - b.price;
@@ -173,7 +237,6 @@ export const apiService = {
       if (!Array.isArray(componentIds) || componentIds.length === 0) {
         throw new Error("Component IDs must be a non-empty array");
       }
-
       const response = await api.post<Record<string, number>>("/prices/build", {
         componentIds,
       });
@@ -184,53 +247,32 @@ export const apiService = {
     }
   },
 
-  // Recommendations
-  getRecommendedBuild: async (
+  // ── Product recommendation ───────────────────────────────────────────────────
+  getProductRecommendation: async (
     request: RecommendationFormData,
-  ): Promise<BuildRecommendation> => {
+  ): Promise<ProductRecommendationResponse> => {
     try {
-      const capitalize = (str: string): string =>
-        str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-
-      const backendRequest: RecommendationRequest = {
-        budget: request.budget,
-        useCase: capitalize(request.useCase) as
-          | "Gaming"
-          | "Productivity"
-          | "Office",
-        preference:
-          request.cpuPreference === "any"
-            ? "Any"
-            : (request.cpuPreference.toUpperCase() as "AMD" | "Intel" | "Any"),
-        includeGPU: true,
-      };
-
-      if (!backendRequest.budget || backendRequest.budget <= 0) {
+      if (!request.budget || request.budget <= 0) {
         throw new Error("Budget must be a positive number");
       }
 
-      if (
-        !["Gaming", "Productivity", "Office"].includes(backendRequest.useCase)
-      ) {
-        throw new Error("Invalid use case");
-      }
-
-      if (!["AMD", "Intel", "Any"].includes(backendRequest.preference)) {
-        throw new Error("Invalid CPU preference");
-      }
-
-      const response = await api.post<BuildRecommendation>(
-        "/recommend/build",
-        backendRequest,
+      const response = await api.post<ProductRecommendationResponse>(
+        "/recommend/product",
+        {
+          budget: request.budget,
+          useCase: request.useCase,
+          brand: request.brand === "Any" ? undefined : request.brand,
+          type: request.type,
+        },
       );
 
-      if (!response.data || !Array.isArray(response.data.components)) {
+      if (!response.data || !response.data.results) {
         throw new Error("Invalid recommendation data received");
       }
 
       return response.data;
     } catch (error) {
-      console.error("Error getting recommendation:", error);
+      console.error("Error getting product recommendation:", error);
       if (axios.isAxiosError(error) && error.response) {
         console.error("Server error details:", error.response.data);
       }
@@ -238,7 +280,27 @@ export const apiService = {
     }
   },
 
-  // Compatibility checks
+  // ── Product price lookup ─────────────────────────────────────────────────────
+  // Returns full prices[] per product including all vendors
+  getProductPrice: async (
+    productIds: string[],
+  ): Promise<ProductPriceResponse> => {
+    try {
+      if (!Array.isArray(productIds) || productIds.length === 0) {
+        throw new Error("productIds must be a non-empty array");
+      }
+      const response = await api.post<ProductPriceResponse>(
+        "/recommend/price",
+        { productIds },
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching product prices:", error);
+      throw error;
+    }
+  },
+
+  // ── Compatibility (unchanged) ───────────────────────────────────────────────
   checkCompatibility: async (
     cpuId: string,
     mbId: string,
@@ -247,15 +309,12 @@ export const apiService = {
       if (!cpuId || !mbId) {
         throw new Error("CPU ID and Motherboard ID are required");
       }
-
       const response = await api.get<{ compatible: boolean; message?: string }>(
         `/compatibility/check?cpuId=${cpuId}&mbId=${mbId}`,
       );
-
       if (typeof response.data.compatible !== "boolean") {
         throw new Error("Invalid compatibility data received");
       }
-
       return response.data;
     } catch (error) {
       console.error("Error checking compatibility:", error);
@@ -263,6 +322,8 @@ export const apiService = {
     }
   },
 };
+
+// ─── Interceptor (unchanged) ──────────────────────────────────────────────────
 
 api.interceptors.response.use(
   (response) => response,
