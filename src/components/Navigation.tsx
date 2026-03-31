@@ -41,7 +41,7 @@ export default function Navigation() {
             {/* Logo */}
             <Link to="/" className="shrink-0 group">
               <span
-                className="md:text-xl text-2xl font-light text-neutral-100 group-hover:text-neutral-300 transition-colors tracking-tight"
+                className="md:text-3xl text-2xl font-light text-neutral-100 group-hover:text-neutral-300 transition-colors tracking-tight"
                 style={{ fontFamily: "Rubik Distressed, serif" }}
               >
                 Build My <span className="font-normal">PC</span>
@@ -54,7 +54,7 @@ export default function Navigation() {
                 <Link
                   key={to}
                   to={to}
-                  className={`relative px-4 py-2 text-sm transition-colors tracking-wide ${
+                  className={`relative px-4 py-2 text-lg transition-colors tracking-wide ${
                     isActive(to)
                       ? "text-neutral-100"
                       : "text-neutral-500 hover:text-neutral-300"
